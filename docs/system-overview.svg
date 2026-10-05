@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" role="img" aria-label="Parallel Edge Detection system overview. Lena_2048.png (2048×2048 RGB) is decoded by stbi_load into a host Image that feeds three engines behind one virtual interface: the sequential Image runs on it directly as the correctness oracle; ParallelImage takes a host copy and uses OpenMP parallel for with raw pointers, plus AVX at 8 floats per op in blur and gradient; CudaImage uploads 12 MB to the GPU, runs 1 thread per pixel in 32×32 blocks, and keeps the data on the GPU until to_host(). All three run the same five stages through virtual dispatch: convert RGB to float grayscale, 5×5 Gaussian blur, 3×3 Sobel X and Y gradient, hysteresis edges at 0.3 / 0.7, and convert back to 8-bit (4 MB). The GoogleTest testbinary races the ParallelImage modes 0–5 in microseconds plus a whole-pipeline speedup, checks each engine's 8-bit output byte-for-byte against the sequential reference with no tolerance (the CUDA result returns as a 4 MB D2H copy), and writes stage PNGs for a visual check.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="600" rx="12"/>
+  <text class="title" x="32" y="48">Parallel Edge Detection — system overview</text>
+  <text class="sub" x="32" y="74">One algorithm, three engines, one oracle: parallel results must match the sequential 8-bit output byte-for-byte.</text>
+
+  <!-- ===== Row 1: the five-stage pipeline (virtual methods on Image) ===== -->
+  <rect class="group" x="24" y="96" width="952" height="112" rx="12"/>
+  <text class="glbl" x="40" y="117">FIVE-STAGE PIPELINE · IDENTICAL MATH IN EVERY ENGINE</text>
+
+  <rect class="b-green" x="40" y="130" width="160" height="60" rx="10"/>
+  <text class="lbl" x="120" y="155" text-anchor="middle">convert</text>
+  <text class="note" x="120" y="175" text-anchor="middle">RGB → float grayscale</text>
+
+  <rect class="b-green" x="230" y="130" width="160" height="60" rx="10"/>
+  <text class="lbl" x="310" y="155" text-anchor="middle">blur</text>
+  <text class="note" x="310" y="175" text-anchor="middle">5×5 Gaussian</text>
+
+  <rect class="b-green" x="420" y="130" width="160" height="60" rx="10"/>
+  <text class="lbl" x="500" y="155" text-anchor="middle">gradient</text>
+  <text class="note" x="500" y="175" text-anchor="middle">3×3 Sobel X + Y</text>
+
+  <rect class="b-green" x="610" y="130" width="160" height="60" rx="10"/>
+  <text class="lbl" x="690" y="155" text-anchor="middle">edges</text>
+  <text class="note" x="690" y="175" text-anchor="middle">hysteresis 0.3 / 0.7</text>
+
+  <rect class="b-green" x="800" y="130" width="160" height="60" rx="10"/>
+  <text class="lbl" x="880" y="155" text-anchor="middle">convert</text>
+  <text class="note" x="880" y="175" text-anchor="middle">float → 8-bit, 4 MB</text>
+
+  <path class="edge" d="M200,160 H228" marker-end="url(#ah)"/>
+  <path class="edge" d="M390,160 H418" marker-end="url(#ah)"/>
+  <path class="edge" d="M580,160 H608" marker-end="url(#ah)"/>
+  <path class="edge" d="M770,160 H798" marker-end="url(#ah)"/>
+
+  <!-- engines run the stages via virtual dispatch (Image = base; ParallelImage / CudaImage override) -->
+  <path class="edge-dash" d="M452,251 V211" marker-end="url(#ah)"/>
+  <text class="elbl" x="462" y="235">virtual dispatch</text>
+
+  <!-- ===== Input: decoded once into a host Image ===== -->
+  <rect class="b-gray" x="24" y="380" width="156" height="76" rx="10"/>
+  <text class="lbl" x="102" y="404" text-anchor="middle">Lena_2048.png</text>
+  <text class="note" x="102" y="423" text-anchor="middle">2048×2048 RGB</text>
+  <text class="note" x="102" y="442" text-anchor="middle">stbi_load → host Image</text>
+
+  <!-- ===== Engines ===== -->
+  <rect class="group" x="274" y="252" width="356" height="316" rx="12"/>
+  <text class="glbl" x="290" y="273">THREE ENGINES · ONE VIRTUAL INTERFACE</text>
+
+  <rect class="b-blue" x="292" y="288" width="320" height="76" rx="10"/>
+  <text class="lbl" x="452" y="312" text-anchor="middle">ParallelImage — OpenMP + AVX</text>
+  <text class="note" x="452" y="331" text-anchor="middle">OpenMP parallel for, raw pointers</text>
+  <text class="note" x="452" y="350" text-anchor="middle">AVX, 8 floats per op: blur + gradient</text>
+
+  <rect class="b-blue" x="292" y="380" width="320" height="76" rx="10"/>
+  <text class="lbl" x="452" y="404" text-anchor="middle">Image — sequential</text>
+  <text class="note" x="452" y="423" text-anchor="middle">plain nested loops</text>
+  <text class="note" x="452" y="442" text-anchor="middle">the correctness oracle</text>
+
+  <rect class="b-purple" x="292" y="472" width="320" height="76" rx="10"/>
+  <text class="lbl" x="452" y="496" text-anchor="middle">CudaImage — CUDA</text>
+  <text class="note" x="452" y="515" text-anchor="middle">1 thread / pixel, 32×32 blocks</text>
+  <text class="note" x="452" y="534" text-anchor="middle">stays on the GPU until to_host()</text>
+
+  <!-- fan-out: the decoded host Image feeds every engine -->
+  <path class="edge" d="M180,418 H290" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,418 V326 H290" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,418 V510 H290" marker-end="url(#ah)"/>
+  <circle class="dot" cx="200" cy="418" r="3.5"/>
+  <text class="elbl" x="237" y="319" text-anchor="middle">host copy</text>
+  <text class="elbl" x="237" y="503" text-anchor="middle">H2D, 12 MB</text>
+
+  <!-- ===== Harness ===== -->
+  <rect class="group" x="752" y="252" width="224" height="220" rx="12"/>
+  <text class="glbl" x="768" y="273">TESTBINARY · GOOGLETEST</text>
+
+  <rect class="b-orange" x="768" y="288" width="192" height="76" rx="10"/>
+  <text class="lbl" x="864" y="312" text-anchor="middle">Mode races</text>
+  <text class="note" x="864" y="331" text-anchor="middle">variants timed in µs</text>
+  <text class="note" x="864" y="350" text-anchor="middle">+ whole-pipeline speedup</text>
+
+  <rect class="b-orange" x="768" y="380" width="192" height="76" rx="10"/>
+  <text class="lbl" x="864" y="404" text-anchor="middle">Exact-match gate</text>
+  <text class="note" x="864" y="423" text-anchor="middle">8-bit output vs oracle</text>
+  <text class="note" x="864" y="442" text-anchor="middle">byte-for-byte, no tolerance</text>
+
+  <!-- races drive the OpenMP + AVX mode variants only -->
+  <path class="edge" d="M766,314 H614" marker-end="url(#ah)"/>
+  <text class="elbl" x="690" y="306" text-anchor="middle">modes 0–5</text>
+
+  <!-- fan-in: every engine's 8-bit result to the gate -->
+  <path class="edge" d="M612,346 H712 V400 H766" marker-end="url(#ah)"/>
+  <path class="edge" d="M612,418 H766" marker-end="url(#ah)"/>
+  <path class="edge" d="M612,510 H712 V436 H766" marker-end="url(#ah)"/>
+  <text class="elbl" x="671" y="411" text-anchor="middle">reference</text>
+  <text class="elbl" x="671" y="503" text-anchor="middle">D2H, 4 MB</text>
+
+  <!-- ===== Output: the tests write stage PNGs ===== -->
+  <path class="edge" d="M864,472 V492" marker-end="url(#ah)"/>
+  <rect class="b-gray" x="768" y="494" width="192" height="64" rx="10"/>
+  <text class="lbl" x="864" y="520" text-anchor="middle">Stage PNGs</text>
+  <text class="note" x="864" y="540" text-anchor="middle">write_png, visual check</text>
+
+  <!-- tiny legend: where each engine runs -->
+  <rect class="b-blue" x="24" y="494" width="14" height="10" rx="2"/>
+  <text class="note" x="44" y="503">host CPU</text>
+  <rect class="b-purple" x="24" y="516" width="14" height="10" rx="2"/>
+  <text class="note" x="44" y="525">NVIDIA GPU</text>
+</svg>

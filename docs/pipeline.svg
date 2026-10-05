@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 776" width="1000" height="776" role="img" aria-label="Parallel Edge Detection, the pipeline. Top strip, left to right, each step and what it produces: load with stbi_load from the 16-bit RGB test PNG gives an 8-bit RGB buffer, 3 bytes per pixel, 12 MB; convert, mean of R, G and B divided by 255 into 0 to 1, gives float grayscale, 4 bytes per pixel, 16 MB; blur, a 5×5 Gaussian with 25 taps, gives float grayscale, 16 MB; gradient, two 3×3 Sobel kernels combined as the square root of Gx squared plus Gy squared, gives float grayscale, 16 MB; edges, hysteresis in one 3×3 pass, gives a float map of 0 or 1, 16 MB; convert, times 255, gives 8-bit grayscale, 1 byte per pixel, 4 MB; write_png with stbi_write_png gives an 8-bit grayscale PNG file. A pixel becomes an edge if its value is above high, or above low with a pixel above high in its 3×3 neighbourhood; the tests use low 0.3 and high 0.7. Stencil taps that fall off the image read the nearest edge pixel, and all five stages return a new buffer. Below, how each engine runs it with its default variants: Image runs nested x and y loops through pixel and fppixel and is the reference every engine must match exactly with operator==; ParallelImage copies the loaded image in with copy constructor mode 2, a memcpy split by thread, then runs convert mode 4, blur mode 4 and gradient mode 3 with AVX interiors and scalar borders, edges mode 2 with raw pointers and rows in parallel, and convert mode 4; CudaImage uploads with cudaMemcpy host to device, 12 MB, runs one kernel per stage with one thread per pixel in 32×32 blocks on an x/32 by y/32 grid on the default stream, keeps every buffer on the device, and copies the 4 MB result back with to_host().">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .wire{stroke:#59636e;stroke-width:1.4;fill:none}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .wire{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="776" rx="12"/>
+  <text class="title" x="32" y="48">Parallel Edge Detection — the pipeline</text>
+  <text class="sub" x="32" y="74">Five stages, the same math in every engine; buffer sizes are for the 2048×2048 RGB test image.</text>
+
+  <!-- ============ THE STRIP ============ -->
+  <!-- columns: left x = 34 + 136k, width 116, centre = left + 58 -->
+  <rect class="group" x="24" y="96" width="952" height="240" rx="12"/>
+  <text class="glbl" x="40" y="120">THE PIPELINE · EACH STEP AND WHAT IT PRODUCES</text>
+
+  <!-- step boxes -->
+  <rect class="b-orange" x="34" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="92" y="160" text-anchor="middle">load</text>
+  <text class="note" x="92" y="179" text-anchor="middle">stbi_load</text>
+  <text class="note" x="92" y="195" text-anchor="middle">16-bit RGB PNG</text>
+
+  <rect class="b-green" x="170" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="228" y="160" text-anchor="middle">convert</text>
+  <text class="note" x="228" y="179" text-anchor="middle">mean(R, G, B)</text>
+  <text class="note" x="228" y="195" text-anchor="middle">÷ 255 → [0, 1]</text>
+
+  <rect class="b-green" x="306" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="364" y="160" text-anchor="middle">blur</text>
+  <text class="note" x="364" y="179" text-anchor="middle">5×5 Gaussian</text>
+  <text class="note" x="364" y="195" text-anchor="middle">25 taps</text>
+
+  <rect class="b-green" x="442" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="500" y="160" text-anchor="middle">gradient</text>
+  <text class="note" x="500" y="179" text-anchor="middle">3×3 Sobel ×2</text>
+  <text class="note" x="500" y="195" text-anchor="middle">√(Gx² + Gy²)</text>
+
+  <rect class="b-green" x="578" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="636" y="160" text-anchor="middle">edges</text>
+  <text class="note" x="636" y="179" text-anchor="middle">hysteresis</text>
+  <text class="note" x="636" y="195" text-anchor="middle">one 3×3 pass</text>
+
+  <rect class="b-green" x="714" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="772" y="160" text-anchor="middle">convert</text>
+  <text class="note" x="772" y="179" text-anchor="middle">× 255</text>
+  <text class="note" x="772" y="195" text-anchor="middle">0 / 1 → 0 / 255</text>
+
+  <rect class="b-orange" x="850" y="134" width="116" height="72" rx="10"/>
+  <text class="lbl" x="908" y="160" text-anchor="middle">write_png</text>
+  <text class="note" x="908" y="179" text-anchor="middle">stbi_write_png</text>
+
+  <!-- flow between steps -->
+  <line class="edge" x1="150" y1="170" x2="166" y2="170" marker-end="url(#ah)"/>
+  <line class="edge" x1="286" y1="170" x2="302" y2="170" marker-end="url(#ah)"/>
+  <line class="edge" x1="422" y1="170" x2="438" y2="170" marker-end="url(#ah)"/>
+  <line class="edge" x1="558" y1="170" x2="574" y2="170" marker-end="url(#ah)"/>
+  <line class="edge" x1="694" y1="170" x2="710" y2="170" marker-end="url(#ah)"/>
+  <line class="edge" x1="830" y1="170" x2="846" y2="170" marker-end="url(#ah)"/>
+
+  <!-- each step's output buffer -->
+  <line class="wire" x1="92" y1="206" x2="92" y2="228"/>
+  <line class="wire" x1="228" y1="206" x2="228" y2="228"/>
+  <line class="wire" x1="364" y1="206" x2="364" y2="228"/>
+  <line class="wire" x1="500" y1="206" x2="500" y2="228"/>
+  <line class="wire" x1="636" y1="206" x2="636" y2="228"/>
+  <line class="wire" x1="772" y1="206" x2="772" y2="228"/>
+  <line class="wire" x1="908" y1="206" x2="908" y2="228"/>
+
+  <rect class="b-gray" x="34" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="92" y="250" text-anchor="middle">RGB, 8-bit</text>
+  <text class="note" x="92" y="268" text-anchor="middle">3 B/px · 12 MB</text>
+
+  <rect class="b-gray" x="170" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="228" y="250" text-anchor="middle">float gray</text>
+  <text class="note" x="228" y="268" text-anchor="middle">4 B/px · 16 MB</text>
+
+  <rect class="b-gray" x="306" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="364" y="250" text-anchor="middle">float gray</text>
+  <text class="note" x="364" y="268" text-anchor="middle">16 MB</text>
+
+  <rect class="b-gray" x="442" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="500" y="250" text-anchor="middle">float gray</text>
+  <text class="note" x="500" y="268" text-anchor="middle">16 MB</text>
+
+  <rect class="b-gray" x="578" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="636" y="250" text-anchor="middle">float, 0 or 1</text>
+  <text class="note" x="636" y="268" text-anchor="middle">16 MB</text>
+
+  <rect class="b-gray" x="714" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="772" y="250" text-anchor="middle">gray, 8-bit</text>
+  <text class="note" x="772" y="268" text-anchor="middle">1 B/px · 4 MB</text>
+
+  <rect class="b-gray" x="850" y="228" width="116" height="52" rx="10"/>
+  <text class="lbl" x="908" y="250" text-anchor="middle">PNG file</text>
+  <text class="note" x="908" y="268" text-anchor="middle">8-bit gray</text>
+
+  <!-- strip footnotes -->
+  <text class="note" x="40" y="304">edges: a pixel becomes 1 if its value &gt; high, or &gt; low with a pixel &gt; high in its 3×3 neighbourhood; else 0. Tests use low 0.3, high 0.7.</text>
+  <text class="note" x="40" y="321">blur, gradient and edges are stencils: taps that fall off the image read the nearest edge pixel. All five stages return a new buffer.</text>
+
+  <!-- ============ THE ENGINES ============ -->
+  <rect class="group" x="24" y="356" width="952" height="356" rx="12"/>
+  <text class="glbl" x="40" y="380">HOW EACH ENGINE RUNS IT · DEFAULT VARIANT PER STAGE</text>
+
+  <!-- lane A: Image -->
+  <text class="lbl" x="40" y="408">Image — sequential</text>
+  <text class="note" x="181" y="408">host memory · the reference: tests require every engine’s 8-bit result to match it exactly (operator==)</text>
+  <rect class="b-blue" x="170" y="418" width="660" height="56" rx="10"/>
+  <text class="lbl" x="500" y="441" text-anchor="middle">nested x/y loops, one output pixel at a time</text>
+  <text class="note" x="500" y="461" text-anchor="middle">pixel() / fppixel() accessors; every tap clamps its coordinates at the border</text>
+
+  <!-- lane B: ParallelImage -->
+  <text class="lbl" x="40" y="502">ParallelImage — OpenMP + AVX</text>
+  <text class="note" x="263" y="502">host memory · OpenMP threads · AVX handles 8 floats per instruction</text>
+
+  <rect class="b-orange" x="34" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="92" y="538" text-anchor="middle">copy in</text>
+  <text class="note" x="92" y="557" text-anchor="middle">mode 2 memcpy</text>
+  <text class="note" x="92" y="573" text-anchor="middle">split by thread</text>
+
+  <rect class="b-blue" x="170" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="228" y="538" text-anchor="middle">mode 4</text>
+  <text class="note" x="228" y="557" text-anchor="middle">one flat loop</text>
+  <text class="note" x="228" y="573" text-anchor="middle">over pixels</text>
+
+  <rect class="b-blue" x="306" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="364" y="538" text-anchor="middle">mode 4</text>
+  <text class="note" x="364" y="557" text-anchor="middle">AVX interior</text>
+  <text class="note" x="364" y="573" text-anchor="middle">scalar border</text>
+
+  <rect class="b-blue" x="442" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="500" y="538" text-anchor="middle">mode 3</text>
+  <text class="note" x="500" y="557" text-anchor="middle">AVX interior</text>
+  <text class="note" x="500" y="573" text-anchor="middle">scalar border</text>
+
+  <rect class="b-blue" x="578" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="636" y="538" text-anchor="middle">mode 2</text>
+  <text class="note" x="636" y="557" text-anchor="middle">raw pointers</text>
+  <text class="note" x="636" y="573" text-anchor="middle">rows in parallel</text>
+
+  <rect class="b-blue" x="714" y="512" width="116" height="72" rx="10"/>
+  <text class="lbl" x="772" y="538" text-anchor="middle">mode 4</text>
+  <text class="note" x="772" y="557" text-anchor="middle">one flat loop</text>
+  <text class="note" x="772" y="573" text-anchor="middle">over pixels</text>
+
+  <line class="edge" x1="150" y1="548" x2="166" y2="548" marker-end="url(#ah)"/>
+  <line class="edge" x1="286" y1="548" x2="302" y2="548" marker-end="url(#ah)"/>
+  <line class="edge" x1="422" y1="548" x2="438" y2="548" marker-end="url(#ah)"/>
+  <line class="edge" x1="558" y1="548" x2="574" y2="548" marker-end="url(#ah)"/>
+  <line class="edge" x1="694" y1="548" x2="710" y2="548" marker-end="url(#ah)"/>
+
+  <!-- lane C: CudaImage -->
+  <text class="lbl" x="40" y="612">CudaImage — CUDA</text>
+  <text class="note" x="186" y="612">device memory · the five stages run as kernels on the default stream</text>
+
+  <rect class="b-orange" x="34" y="622" width="116" height="72" rx="10"/>
+  <text class="lbl" x="92" y="648" text-anchor="middle">upload</text>
+  <text class="note" x="92" y="667" text-anchor="middle">cudaMemcpy</text>
+  <text class="note" x="92" y="683" text-anchor="middle">H2D · 12 MB</text>
+
+  <rect class="b-purple" x="170" y="622" width="660" height="72" rx="10"/>
+  <text class="lbl" x="500" y="648" text-anchor="middle">one kernel per stage · one thread per pixel · 32×32 blocks</text>
+  <text class="note" x="500" y="667" text-anchor="middle">grid (x/32, y/32) covers 2048×2048 exactly · each stage cudaMallocs and zeroes its output</text>
+  <text class="note" x="500" y="683" text-anchor="middle">Gaussian / Sobel tables in __constant__ memory · nothing returns to the host between stages</text>
+
+  <rect class="b-orange" x="850" y="622" width="116" height="72" rx="10"/>
+  <text class="lbl" x="908" y="648" text-anchor="middle">to_host()</text>
+  <text class="note" x="908" y="667" text-anchor="middle">cudaMemcpy</text>
+  <text class="note" x="908" y="683" text-anchor="middle">D2H · 4 MB</text>
+
+  <line class="edge" x1="150" y1="658" x2="166" y2="658" marker-end="url(#ah)"/>
+  <line class="edge" x1="830" y1="658" x2="846" y2="658" marker-end="url(#ah)"/>
+
+  <!-- ============ LEGEND ============ -->
+  <rect class="b-green" x="40" y="740" width="18" height="12" rx="3"/>
+  <text class="elbl" x="66" y="750">pipeline stage</text>
+  <rect class="b-gray" x="185" y="740" width="18" height="12" rx="3"/>
+  <text class="elbl" x="211" y="750">buffer or file a step produces</text>
+  <rect class="b-orange" x="410" y="740" width="18" height="12" rx="3"/>
+  <text class="elbl" x="436" y="750">copy in or out (file, host, device)</text>
+  <rect class="b-blue" x="652" y="740" width="18" height="12" rx="3"/>
+  <text class="elbl" x="678" y="750">runs on the host CPU</text>
+  <rect class="b-purple" x="836" y="740" width="18" height="12" rx="3"/>
+  <text class="elbl" x="862" y="750">runs on the GPU</text>
+</svg>
