@@ -9,8 +9,9 @@
 > **OpenMP + AVX** CPU engine that vectorizes the blur and gradient stencil
 > interiors 8 pixels at a time, and a **CUDA** engine that gives every pixel its own GPU thread
 > and never lets the data leave the device mid-pipeline. A GoogleTest harness
-> races the variants and demands output byte-identical to the sequential
-> engine's from all of them.
+> races most of the CPU variants and demands output byte-identical to the
+> sequential engine's (compared as 8-bit images, channel 0) from every variant
+> it races and from both parallel engines.
 
 This document is the developer-facing map of the whole system — every
 component and how data moves between them. The companion
@@ -40,8 +41,8 @@ component and how data moves between them. The companion
    slightly-wrong pictures.
 
 2. **The pipeline is a `shared_ptr` chain, and that shape does real work.**
-   `img->convert(...)->blur()->gradient()->edges(...)` frees each intermediate
-   the moment the next stage is done with it. On the CUDA engine the same
+   `img->convert(...)->blur()->gradient()->edges(...)` frees every intermediate
+   automatically when the statement ends, with no manual cleanup. On the CUDA engine the same
    shape becomes a *residency* guarantee: each stage allocates its output on
    the device, so the whole pipeline is one host→device upload, five kernel
    launches, and one download at `to_host()` — zero intermediate transfers.
@@ -49,7 +50,7 @@ component and how data moves between them. The companion
 3. **Optimization is measured, not assumed.** Each stage carries numbered
    mode variants — naive OpenMP, accessor-free pointer indexing, flat
    single-loop, AVX — and the harness races them back-to-back per run and
-   prints microsecond costs. Each stage's no-argument call dispatches to a
+   prints microsecond costs. Each stage's call without a mode argument dispatches to a
    fixed default variant; the AVX gradient and the float→8-bit convert
    defaults are checked for correctness but never timed on their own.
    The design hypothesis the races are built to test: parallelism (OpenMP)
@@ -145,7 +146,7 @@ Three consequences worth knowing:
 
 | Stage | Test | What it proves |
 |---|---|---|
-| 1 | `ImageTest.*` | I/O round-trips, shrink vs reference PNG, convert round-trip, sequential pipeline produces the expected stage PNGs |
+| 1 | `ImageTest.*` | PNG load/write (a bad path must throw), shrink vs reference PNG, convert round-trip, sequential pipeline runs end to end and writes its stage PNGs (`TestBlur` / `MakeSmall` assert nothing about their contents; see stage 5) |
 | 2 | `ParallelTest.TimeCopy / TimeConvert / TimeBlur / TimeGradient / TimeEdge` | the OpenMP/AVX mode races: each variant timed and byte-identical to the sequential oracle — except the AVX gradient (mode 3) and the float→8-bit convert (only its default mode 4 runs), both covered only indirectly via default dispatch, e.g. in `TimeEdge` / `FullPerformance` |
 | 3 | `ParallelTest.FullPerformance` | whole-pipeline sequential vs parallel race; prints speedup (integer-truncated `t0 / t1`) + thread count |
 | 4 | `TestCudaImage.TestEach` | full GPU pipeline with per-stage timings; final output byte-identical to the oracle |
@@ -165,8 +166,10 @@ Three consequences worth knowing:
   non-multiple-of-32 images would leave a black remainder strip. The kernels
   already carry per-thread bounds guards; ceil-division in the grid
   computation is the only missing piece.
-- **Fallback traps** — `CudaImage`'s unsupported conversions fall through to
-  base-class CPU code that would touch a device pointer; the supported path
+- **Fallback traps** — `CudaImage`'s unsupported conversions and non-zero
+  modes fall through to base-class CPU code that either touches a device
+  pointer or, for conversions it lacks (e.g. `rgb→grayscale`), throws
+  `"Not Implemented (yet)"`; the supported path
   (`rgb→floatgrayscale`, `floatgrayscale→grayscale`, mode 0) is the only safe
   one. On the CPU side, an out-of-range `ParallelImage` mode returns an
   allocated but never-written image for the stencil stages, and
