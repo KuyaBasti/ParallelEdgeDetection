@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1288" width="1000" height="1288" role="img" aria-label="ParallelEdgeDetection CUDA pipeline as run by TestCudaImage.TestEach on the 2048 by 2048 test image: the test copies the image to the GPU once (12 MB of 8-bit RGB), then five calls each allocate and zero a new device output and launch one kernel on a 64 by 64 grid of 32 by 32 thread blocks, one thread per pixel; reassigning test_each to each result frees the previous device buffer. to_host copies the 4 MB edge map back once, and afterwards, untimed, the test compares it byte for byte with the sequential result. No explicit synchronization call exists in the code.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1000" height="1288" rx="12"/>
+  <text class="title" x="32" y="48">Parallel Edge Detection — CUDA pipeline, one upload to one download</text>
+  <text class="sub" x="32" y="74">TestCudaImage.TestEach on the 2048 × 2048 test image: one copy in, five kernel launches, one copy out.</text>
+  <!-- legend -->
+  <g>
+    <line class="edge" x1="32" y1="98" x2="62" y2="98" marker-end="url(#ah)"/>
+    <text class="elbl" x="70" y="102">call</text>
+    <line class="edge-dash" x1="112" y1="98" x2="142" y2="98" marker-end="url(#ah)"/>
+    <text class="elbl" x="150" y="102">data or result returned</text>
+    <circle class="b-orange" cx="300" cy="98" r="9"/>
+    <text class="elbl" x="300" y="102" text-anchor="middle">n</text>
+    <text class="elbl" x="315" y="102">“Part n” timer the test prints (GetTiming, µs)</text>
+    <rect class="b-orange" x="566" y="88" width="8" height="20" rx="2"/>
+    <text class="elbl" x="582" y="102">span that timer covers</text>
+    <rect class="b-gray" x="722" y="92" width="12" height="12" rx="3"/>
+    <text class="elbl" x="740" y="102">note</text>
+    <rect class="b-red" x="788" y="92" width="12" height="12" rx="3"/>
+    <text class="elbl" x="806" y="102">caveat</text>
+  </g>
+  <!-- participants + lifelines -->
+  <g>
+    <line class="group" x1="120" y1="180" x2="120" y2="1266"/>
+    <line class="group" x1="380" y1="180" x2="380" y2="1266"/>
+    <line class="group" x1="850" y1="180" x2="850" y2="1266"/>
+    <rect class="b-orange" x="20" y="124" width="200" height="56" rx="10"/>
+    <text class="lbl" x="120" y="147" text-anchor="middle">testbinary</text>
+    <text class="note" x="120" y="166" text-anchor="middle">host · user_tests.cpp</text>
+    <rect class="b-blue" x="280" y="124" width="200" height="56" rx="10"/>
+    <text class="lbl" x="380" y="147" text-anchor="middle">CudaImage</text>
+    <text class="note" x="380" y="166" text-anchor="middle">host side · cuda_image.cu</text>
+    <rect class="b-purple" x="750" y="124" width="200" height="56" rx="10"/>
+    <text class="lbl" x="850" y="147" text-anchor="middle">GPU</text>
+    <text class="note" x="850" y="166" text-anchor="middle">default stream · device memory</text>
+  </g>
+  <!-- Part 0: the one upload -->
+  <g>
+    <rect class="b-orange" x="116" y="214" width="8" height="56" rx="2"/>
+    <circle class="b-orange" cx="120" cy="214" r="12"/>
+    <text class="lbl" x="120" y="219" text-anchor="middle">0</text>
+    <line class="edge" x1="132" y1="214" x2="379" y2="214" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="206" text-anchor="middle">make_shared&lt;CudaImage&gt;(lena)</text>
+    <line class="edge" x1="381" y1="262" x2="849" y2="262" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="252" text-anchor="middle">12 MB of 8-bit RGB (2048 × 2048 × 3 B), the only upload</text>
+    <text class="note mono" x="615" y="236" text-anchor="middle">cudaMalloc + cudaMemcpy HostToDevice</text>
+  </g>
+  <!-- launch configuration shared by all five kernels -->
+  <rect class="b-gray" x="240" y="284" width="730" height="68" rx="8"/>
+  <text class="lbl" x="256" y="306">Every launch below: <tspan class="mono">&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</tspan></text>
+  <text class="note" x="256" y="325">grid = dim3(_x/32, _y/32, 1) = 64 × 64 = 4,096 blocks · block = dim3(32, 32, 1) = 1,024 threads</text>
+  <text class="note" x="256" y="341">= 4,194,304 threads, one per pixel; each checks tidx &lt; x &amp;&amp; tidy &lt; y before touching memory</text>
+  <!-- Parts 1-5: device-resident stages -->
+  <g>
+    <rect class="group" x="20" y="368" width="960" height="642" rx="8"/>
+    <rect class="b-gray" x="20" y="368" width="372" height="26" rx="8"/>
+    <text class="glbl" x="32" y="385">PARTS 1–5 · NO HOST TRANSFERS IN BETWEEN</text>
+  </g>
+  <!-- Part 1 -->
+  <g>
+    <rect class="b-orange" x="116" y="422" width="8" height="80" rx="2"/>
+    <circle class="b-orange" cx="120" cy="422" r="12"/>
+    <text class="lbl" x="120" y="427" text-anchor="middle">1</text>
+    <line class="edge" x1="132" y1="422" x2="379" y2="422" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="414" text-anchor="middle">convert(floatgrayscale)</text>
+    <line class="edge" x1="381" y1="464" x2="849" y2="464" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="454" text-anchor="middle">convertRGBtoGRAYSCALE&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</text>
+    <text class="note" x="615" y="438" text-anchor="middle">cudaMalloc + cudaMemset a 16 MB float output, then async launch</text>
+    <line class="edge" x1="381" y1="496" x2="849" y2="496" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="486" text-anchor="middle">~CudaImage → cudaFree of the 12 MB RGB input</text>
+  </g>
+  <!-- Part 2 -->
+  <g>
+    <rect class="b-orange" x="116" y="526" width="8" height="80" rx="2"/>
+    <circle class="b-orange" cx="120" cy="526" r="12"/>
+    <text class="lbl" x="120" y="531" text-anchor="middle">2</text>
+    <line class="edge" x1="132" y1="526" x2="379" y2="526" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="518" text-anchor="middle">blur()</text>
+    <line class="edge" x1="381" y1="568" x2="849" y2="568" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="558" text-anchor="middle">blur_kernel&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</text>
+    <text class="note" x="615" y="542" text-anchor="middle">cudaMalloc + cudaMemset a 16 MB float output, then async launch</text>
+    <line class="edge" x1="381" y1="600" x2="849" y2="600" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="590" text-anchor="middle">~CudaImage → cudaFree of the 16 MB float input</text>
+  </g>
+  <!-- Part 3 -->
+  <g>
+    <rect class="b-orange" x="116" y="630" width="8" height="80" rx="2"/>
+    <circle class="b-orange" cx="120" cy="630" r="12"/>
+    <text class="lbl" x="120" y="635" text-anchor="middle">3</text>
+    <line class="edge" x1="132" y1="630" x2="379" y2="630" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="622" text-anchor="middle">gradient()</text>
+    <line class="edge" x1="381" y1="672" x2="849" y2="672" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="662" text-anchor="middle">gradient_kernel&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</text>
+    <text class="note" x="615" y="646" text-anchor="middle">cudaMalloc + cudaMemset a 16 MB float output, then async launch</text>
+    <line class="edge" x1="381" y1="704" x2="849" y2="704" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="694" text-anchor="middle">~CudaImage → cudaFree of the 16 MB float input</text>
+  </g>
+  <!-- Part 4 -->
+  <g>
+    <rect class="b-orange" x="116" y="734" width="8" height="80" rx="2"/>
+    <circle class="b-orange" cx="120" cy="734" r="12"/>
+    <text class="lbl" x="120" y="739" text-anchor="middle">4</text>
+    <line class="edge" x1="132" y1="734" x2="379" y2="734" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="726" text-anchor="middle">edges(0.3f, 0.7f)</text>
+    <line class="edge" x1="381" y1="776" x2="849" y2="776" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="766" text-anchor="middle">edges_kernel&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</text>
+    <text class="note" x="615" y="750" text-anchor="middle">cudaMalloc + cudaMemset a 16 MB float output, then async launch</text>
+    <line class="edge" x1="381" y1="808" x2="849" y2="808" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="798" text-anchor="middle">~CudaImage → cudaFree of the 16 MB float input</text>
+  </g>
+  <!-- Part 5 -->
+  <g>
+    <rect class="b-orange" x="116" y="838" width="8" height="80" rx="2"/>
+    <circle class="b-orange" cx="120" cy="838" r="12"/>
+    <text class="lbl" x="120" y="843" text-anchor="middle">5</text>
+    <line class="edge" x1="132" y1="838" x2="379" y2="838" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="830" text-anchor="middle">convert(grayscale)</text>
+    <line class="edge" x1="381" y1="880" x2="849" y2="880" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="870" text-anchor="middle">convertFLOATINGGRAYSCALEtoGRAYSCALE&lt;&lt;&lt;64×64, 32×32&gt;&gt;&gt;</text>
+    <text class="note" x="615" y="854" text-anchor="middle">cudaMalloc + cudaMemset a 4 MB 8-bit output, then async launch</text>
+    <line class="edge" x1="381" y1="912" x2="849" y2="912" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="902" text-anchor="middle">~CudaImage → cudaFree of the 16 MB float input</text>
+  </g>
+  <!-- why no explicit sync is needed -->
+  <rect class="b-gray" x="40" y="934" width="920" height="68" rx="8"/>
+  <text class="lbl" x="56" y="956">No explicit synchronization call anywhere in the code</text>
+  <text class="note" x="56" y="975">The test's <tspan class="mono">test_each = test_each-&gt;…()</tspan> drops the old image → ~CudaImage → cudaFree, which waits for the kernel still reading it</text>
+  <text class="note" x="56" y="991">(CUDA runtime behaviour), and the default stream runs the five kernels strictly in order.</text>
+  <!-- Part 6: the one download -->
+  <g>
+    <rect class="b-orange" x="116" y="1040" width="8" height="116" rx="2"/>
+    <circle class="b-orange" cx="120" cy="1040" r="12"/>
+    <text class="lbl" x="120" y="1045" text-anchor="middle">6</text>
+    <line class="edge" x1="132" y1="1040" x2="379" y2="1040" marker-end="url(#ah)"/>
+    <text class="note mono" x="256" y="1032" text-anchor="middle">last-&gt;to_host()</text>
+    <rect class="b-gray" x="136" y="1054" width="236" height="66" rx="8"/>
+    <text class="lbl" x="148" y="1075">Nothing freed in Part 6</text>
+    <text class="note" x="148" y="1094"><tspan class="mono">last</tspan>, a second shared_ptr, keeps</text>
+    <text class="note" x="148" y="1110">the 4 MB device image to test end</text>
+    <line class="edge" x1="381" y1="1082" x2="849" y2="1082" marker-end="url(#ah)"/>
+    <text class="note mono" x="615" y="1072" text-anchor="middle">cudaMemcpy DeviceToHost (blocking)</text>
+    <text class="note" x="615" y="1056" text-anchor="middle">allocates a 4 MB host Image (malloc) as the target, then</text>
+    <line class="edge-dash" x1="849" y1="1114" x2="381" y2="1114" marker-end="url(#ah)"/>
+    <text class="note" x="615" y="1106" text-anchor="middle">4 MB 8-bit edge map</text>
+    <line class="edge-dash" x1="379" y1="1150" x2="125" y2="1150" marker-end="url(#ah)"/>
+    <text class="note" x="256" y="1142" text-anchor="middle">returns shared_ptr&lt;Image&gt; (host)</text>
+  </g>
+  <!-- after the timers -->
+  <rect class="b-gray" x="30" y="1174" width="440" height="72" rx="8"/>
+  <text class="lbl" x="46" y="1198">Then, untimed: compare with the oracle</text>
+  <text class="note" x="46" y="1218">reference = the same five stages on the sequential Image</text>
+  <text class="note" x="46" y="1235"><tspan class="mono">EXPECT_TRUE(*reference == *test_each)</tspan> — byte-exact</text>
+  <!-- caveat -->
+  <rect class="b-red" x="490" y="1174" width="480" height="72" rx="8"/>
+  <text class="lbl" x="506" y="1198">Grid size rounds down</text>
+  <text class="note" x="506" y="1218">_x/32 and _y/32 truncate: a side that is not a multiple of 32 leaves</text>
+  <text class="note" x="506" y="1235">an edge strip with no threads, still 0 from cudaMemset. 2048 is exact.</text>
+</svg>

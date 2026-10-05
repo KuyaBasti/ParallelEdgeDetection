@@ -1,0 +1,262 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1340" width="1000" height="1340" role="img" aria-label="Parallel Edge Detection end-to-end flowchart. testfiles/Lena_2048.png (2048×2048 RGB, 16 bits per channel) is decoded by stbi_load into an 8-bit RGB host Image (12 MB). That Image is the sequential engine and correctness oracle; it is copied into a ParallelImage (OpenMP + AVX, copy constructor default mode 2) and uploaded with cudaMemcpy into a CudaImage (CUDA, one thread per pixel, 32×32 blocks). All three engines run the same five virtual stages: convert to float grayscale, 5×5 Gaussian blur, 3×3 Sobel gradient, hysteresis edges(low, high), convert back to 8-bit grayscale. ParallelImage defaults: convert mode 4 of 0–5, blur mode 4 of 0–4 (AVX), gradient mode 3 of 0–3 (AVX), edges mode 2 of 0–2; CudaImage launches one kernel per stage. ImageTest.TestBlur writes PNGs after stages 1–4 of the sequential run. The 8-bit results meet an exact-match gate (operator== on channel 0) against the sequential reference; the CUDA result first comes back through to_host(), the only device-to-host copy. ParallelTest.FullPerformance times Image against ParallelImage, ParallelTest.Time* races ParallelImage modes except the AVX gradient and the float-to-8-bit convert, and TestCudaImage.TestEach times CudaImage's single mode. CacheNuke and the edgedetect main.cpp stub are present but unused.">
+  <style>
+    .bg{fill:#ffffff}
+    .title{fill:#1f2328;font:600 22px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .sub{fill:#59636e;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .lbl{fill:#1f2328;font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .note{fill:#59636e;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .glbl{fill:#59636e;font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.06em}
+    .elbl{fill:#59636e;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .edge{stroke:#818b98;stroke-width:1.6;fill:none}
+    .edge-dash{stroke:#818b98;stroke-width:1.6;fill:none;stroke-dasharray:6 4}
+    .arrow{fill:#818b98}
+    .group{fill:none;stroke:#d1d9e0;stroke-width:1.2;stroke-dasharray:4 4}
+    .b-blue{fill:#ddf4ff;stroke:#54aeff;stroke-width:1.5}
+    .b-green{fill:#dafbe1;stroke:#4ac26b;stroke-width:1.5}
+    .b-purple{fill:#fbefff;stroke:#c297ff;stroke-width:1.5}
+    .b-orange{fill:#fff1e5;stroke:#fb8f44;stroke-width:1.5}
+    .b-gray{fill:#f6f8fa;stroke:#d1d9e0;stroke-width:1.5}
+    .b-red{fill:#ffebe9;stroke:#ff8182;stroke-width:1.5}
+    .b-planned{fill:none;stroke:#818b98;stroke-width:1.4;stroke-dasharray:5 4}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .wire{stroke:#59636e;stroke-width:1.4;fill:none}
+    .dot{fill:#59636e}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117}
+      .title,.lbl{fill:#e6edf3}
+      .sub,.note,.glbl,.elbl{fill:#9198a1}
+      .edge,.edge-dash{stroke:#9198a1}
+      .arrow{fill:#9198a1}
+      .group{stroke:#3d444d}
+      .b-blue{fill:#0c2d6b;stroke:#4493f8}
+      .b-green{fill:#0f3b1e;stroke:#3fb950}
+      .b-purple{fill:#2e1a4f;stroke:#ab7df8}
+      .b-orange{fill:#3d1f0a;stroke:#f0883e}
+      .b-gray{fill:#151b23;stroke:#3d444d}
+      .b-red{fill:#3c1618;stroke:#f85149}
+      .b-planned{stroke:#9198a1}
+      .wire{stroke:#9198a1}
+      .dot{fill:#9198a1}
+    }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1000" height="1340" rx="12"/>
+  <text class="title" x="32" y="48">Parallel Edge Detection — end-to-end flowchart</text>
+  <text class="sub" x="32" y="74">One pipeline, three engines: testbinary times them with GetTiming (µs) and demands byte-identical 8-bit output.</text>
+
+  <!-- ===== testbinary: CPU timing tests ===== -->
+  <rect class="group" x="24" y="92" width="312" height="214" rx="12"/>
+  <text class="glbl" x="40" y="113">TESTBINARY · CPU TIMING TESTS</text>
+  <rect class="b-red" x="40" y="124" width="280" height="76" rx="10"/>
+  <text class="lbl" x="180" y="148" text-anchor="middle">ParallelTest.FullPerformance</text>
+  <text class="note" x="180" y="167" text-anchor="middle">whole pipeline: Image vs ParallelImage</text>
+  <text class="note" x="180" y="186" text-anchor="middle">prints t0/t1 (integer) + thread count</text>
+  <rect class="b-red" x="40" y="216" width="248" height="76" rx="10"/>
+  <text class="lbl" x="164" y="240" text-anchor="middle">ParallelTest.Time*</text>
+  <text class="note" x="164" y="259" text-anchor="middle">each mode timed back-to-back</text>
+  <text class="note" x="164" y="278" text-anchor="middle">not raced: AVX gradient, float→8-bit</text>
+
+  <!-- ===== Input ===== -->
+  <rect class="group" x="352" y="92" width="296" height="214" rx="12"/>
+  <text class="glbl" x="368" y="113">INPUT</text>
+  <rect class="b-orange" x="368" y="124" width="264" height="64" rx="10"/>
+  <text class="lbl" x="500" y="151" text-anchor="middle">testfiles/Lena_2048.png</text>
+  <text class="note" x="500" y="170" text-anchor="middle">2048×2048 RGB, 16 bits per channel</text>
+  <rect class="b-orange" x="368" y="216" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="240" text-anchor="middle">Image(file) → stbi_load()</text>
+  <text class="note" x="500" y="259" text-anchor="middle">PNG-only build, decoded to 8-bit</text>
+  <text class="note" x="500" y="278" text-anchor="middle">RGB in host memory · 12 MB</text>
+  <path class="edge" d="M500,188 V212" marker-end="url(#ah)"/>
+
+  <!-- ===== Second build target (stub) ===== -->
+  <rect class="b-planned" x="680" y="100" width="280" height="64" rx="10"/>
+  <text class="lbl" x="820" y="127" text-anchor="middle">edgedetect — main.cpp</text>
+  <text class="note" x="820" y="146" text-anchor="middle">stub target: prints Hello world!</text>
+
+  <!-- ===== testbinary: GPU timing test ===== -->
+  <rect class="group" x="664" y="178" width="312" height="128" rx="12"/>
+  <text class="glbl" x="680" y="199">TESTBINARY · GPU TIMING TEST</text>
+  <rect class="b-red" x="680" y="216" width="280" height="76" rx="10"/>
+  <text class="lbl" x="820" y="240" text-anchor="middle">TestCudaImage.TestEach</text>
+  <text class="note" x="820" y="259" text-anchor="middle">times the upload, 5 stages, to_host()</text>
+  <text class="note" x="820" y="278" text-anchor="middle">one variant (mode 0), nothing raced</text>
+
+  <!-- ===== tests and input -> engines ===== -->
+  <path class="edge" d="M262,292 V384" marker-end="url(#ah)"/>
+  <path class="edge" d="M298,200 V384" marker-end="url(#ah)"/>
+  <path class="edge" d="M298,322 H440 V384" marker-end="url(#ah)"/>
+  <circle class="dot" cx="298" cy="322" r="3"/>
+  <path class="edge" d="M500,292 V384" marker-end="url(#ah)"/>
+  <path class="edge" d="M820,292 V384" marker-end="url(#ah)"/>
+
+  <!-- ===== Engines ===== -->
+  <rect class="group" x="24" y="338" width="952" height="140" rx="12"/>
+  <text class="glbl" x="40" y="359">THREE ENGINES</text>
+  <text class="glbl" x="40" y="375">ONE VIRTUAL INTERFACE</text>
+  <rect class="b-green" x="40" y="388" width="270" height="76" rx="10"/>
+  <text class="lbl" x="175" y="412" text-anchor="middle">ParallelImage — OpenMP + AVX</text>
+  <text class="note" x="175" y="431" text-anchor="middle">row-parallel stencils, raw pointers</text>
+  <text class="note" x="175" y="450" text-anchor="middle">AVX: 8 floats per op (blur, gradient)</text>
+  <rect class="b-gray" x="410" y="388" width="180" height="76" rx="10"/>
+  <text class="lbl" x="500" y="412" text-anchor="middle">Image — sequential</text>
+  <text class="note" x="500" y="431" text-anchor="middle">nested loops, fppixel()</text>
+  <text class="note" x="500" y="450" text-anchor="middle">the correctness oracle</text>
+  <rect class="b-purple" x="690" y="388" width="270" height="76" rx="10"/>
+  <text class="lbl" x="825" y="412" text-anchor="middle">CudaImage — CUDA</text>
+  <text class="note" x="825" y="431" text-anchor="middle">1 thread / pixel, 32×32 blocks</text>
+  <text class="note" x="825" y="450" text-anchor="middle">__constant__ Gaussian + Sobel tables</text>
+
+  <!-- the loaded Image is copied / uploaded into the other two engines -->
+  <path class="edge" d="M410,446 H314" marker-end="url(#ah)"/>
+  <text class="elbl" x="360" y="422" text-anchor="middle">host copy ctor</text>
+  <text class="elbl" x="360" y="435" text-anchor="middle">default mode 2</text>
+  <path class="edge" d="M590,446 H686" marker-end="url(#ah)"/>
+  <text class="elbl" x="640" y="422" text-anchor="middle">cudaMemcpy</text>
+  <text class="elbl" x="640" y="435" text-anchor="middle">H2D · 12 MB</text>
+
+  <!-- ===== engines -> pipeline (virtual dispatch) ===== -->
+  <path class="edge-dash" d="M180,464 V520 H380 V542" marker-end="url(#ah)"/>
+  <text class="elbl" x="190" y="499">overrides with numbered</text>
+  <text class="elbl" x="190" y="512">mode variants per stage</text>
+  <path class="edge-dash" d="M500,464 V542" marker-end="url(#ah)"/>
+  <text class="elbl" x="508" y="499">base</text>
+  <text class="elbl" x="508" y="512">implementation</text>
+  <path class="edge-dash" d="M820,464 V520 H620 V542" marker-end="url(#ah)"/>
+  <text class="elbl" x="630" y="499">overrides: one kernel per stage,</text>
+  <text class="elbl" x="630" y="512">outputs allocated on the GPU</text>
+
+  <!-- ===== Five-stage pipeline ===== -->
+  <rect class="group" x="352" y="546" width="296" height="538" rx="12"/>
+  <text class="glbl" x="368" y="567">FIVE-STAGE PIPELINE</text>
+
+  <rect class="b-blue" x="368" y="584" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="608" text-anchor="middle">convert(floatgrayscale)</text>
+  <text class="note" x="500" y="627" text-anchor="middle">(R + G + B) / (255·3), range [0, 1]</text>
+  <text class="note" x="500" y="646" text-anchor="middle">8-bit RGB 12 MB → float 16 MB</text>
+
+  <rect class="b-blue" x="368" y="686" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="710" text-anchor="middle">blur()</text>
+  <text class="note" x="500" y="729" text-anchor="middle">5×5 Gaussian, weights sum ≈ 1.0</text>
+  <text class="note" x="500" y="748" text-anchor="middle">borders clamp to the nearest pixel</text>
+
+  <rect class="b-blue" x="368" y="788" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="812" text-anchor="middle">gradient()</text>
+  <text class="note" x="500" y="831" text-anchor="middle">3×3 Sobel in X and Y, same borders</text>
+  <text class="note" x="500" y="850" text-anchor="middle">magnitude √(Gx² + Gy²)</text>
+
+  <rect class="b-blue" x="368" y="890" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="914" text-anchor="middle">edges(low, high) — hysteresis</text>
+  <text class="note" x="500" y="933" text-anchor="middle">&gt; high → 1; &gt; low with a 3×3 neighbor</text>
+  <text class="note" x="500" y="952" text-anchor="middle">above high → 1; else 0 · tests: 0.3, 0.7</text>
+
+  <rect class="b-blue" x="368" y="992" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="1016" text-anchor="middle">convert(grayscale)</text>
+  <text class="note" x="500" y="1035" text-anchor="middle">float × 255, cast to 8-bit (truncates)</text>
+  <text class="note" x="500" y="1054" text-anchor="middle">1 byte per pixel · 4 MB</text>
+
+  <path class="edge" d="M500,660 V682" marker-end="url(#ah)"/>
+  <path class="edge" d="M500,762 V784" marker-end="url(#ah)"/>
+  <path class="edge" d="M500,864 V886" marker-end="url(#ah)"/>
+  <path class="edge" d="M500,966 V988" marker-end="url(#ah)"/>
+
+  <!-- ===== Default override per stage (table aligned with the stage rows) ===== -->
+  <rect class="group" x="664" y="546" width="312" height="538" rx="12"/>
+  <text class="glbl" x="680" y="567">DEFAULT OVERRIDE PER STAGE</text>
+  <rect class="b-green" x="680" y="580" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="589">ParallelImage</text>
+  <rect class="b-purple" x="800" y="580" width="14" height="10" rx="2"/>
+  <text class="note" x="820" y="589">CudaImage</text>
+
+  <rect class="b-green" x="680" y="608" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="617">mode 4 of 0–5: one flat parallel loop</text>
+  <rect class="b-purple" x="680" y="628" width="14" height="10" rx="2"/>
+  <text class="note mono" x="700" y="637">convertRGBtoGRAYSCALE</text>
+
+  <rect class="b-green" x="680" y="710" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="719">mode 4 of 0–4: AVX + scalar border ring</text>
+  <rect class="b-purple" x="680" y="730" width="14" height="10" rx="2"/>
+  <text class="note mono" x="700" y="739">blur_kernel</text>
+
+  <rect class="b-green" x="680" y="812" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="821">mode 3 of 0–3: AVX + scalar border ring</text>
+  <rect class="b-purple" x="680" y="832" width="14" height="10" rx="2"/>
+  <text class="note mono" x="700" y="841">gradient_kernel</text>
+
+  <rect class="b-green" x="680" y="914" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="923">mode 2 of 0–2: raw pointers, no AVX</text>
+  <rect class="b-purple" x="680" y="934" width="14" height="10" rx="2"/>
+  <text class="note mono" x="700" y="943">edges_kernel</text>
+
+  <rect class="b-green" x="680" y="1016" width="14" height="10" rx="2"/>
+  <text class="note" x="700" y="1025">mode 4 of 0–5: one flat parallel loop</text>
+  <rect class="b-purple" x="680" y="1036" width="14" height="10" rx="2"/>
+  <text class="note mono" x="700" y="1045">convertFLOATINGGRAYSCALEtoGRAYSCALE</text>
+
+  <!-- ===== Stage PNG taps (sequential run in ImageTest.TestBlur) ===== -->
+  <text class="elbl" x="328" y="610" text-anchor="end">write_png() after stages 1–4</text>
+  <path class="wire" d="M368,622 H336 V928 H368"/>
+  <path class="wire" d="M368,724 H336"/>
+  <path class="wire" d="M368,826 H336"/>
+  <circle class="dot" cx="336" cy="724" r="3"/>
+  <circle class="dot" cx="336" cy="826" r="3"/>
+  <circle class="dot" cx="336" cy="775" r="3"/>
+  <path class="edge" d="M336,775 H304" marker-end="url(#ah)"/>
+  <rect class="b-orange" x="40" y="737" width="260" height="76" rx="10"/>
+  <text class="lbl" x="170" y="761" text-anchor="middle">stage PNGs — visual check</text>
+  <text class="note" x="170" y="780" text-anchor="middle">ImageTest.TestBlur, sequential run</text>
+  <text class="note" x="170" y="799" text-anchor="middle">grayscale, blurred, gradient, edges</text>
+
+  <!-- ===== Outputs: host results go straight to the gate, the CUDA result comes back first ===== -->
+  <path class="edge" d="M440,1068 V1126" marker-end="url(#ah)"/>
+  <text class="elbl" x="432" y="1102" text-anchor="end">Image reference +</text>
+  <text class="elbl" x="432" y="1115" text-anchor="end">ParallelImage result (host)</text>
+  <path class="edge" d="M600,1068 V1110 H820 V1126" marker-end="url(#ah)"/>
+  <text class="elbl" x="612" y="1103">CudaImage result, still on the GPU</text>
+
+  <rect class="b-red" x="368" y="1130" width="264" height="76" rx="10"/>
+  <text class="lbl" x="500" y="1154" text-anchor="middle">exact-match gate</text>
+  <text class="note" x="500" y="1173" text-anchor="middle">operator== on 8-bit pixels, channel 0</text>
+  <text class="note" x="500" y="1192" text-anchor="middle">vs the sequential Image reference</text>
+
+  <rect class="b-purple" x="680" y="1130" width="280" height="76" rx="10"/>
+  <text class="lbl" x="820" y="1154" text-anchor="middle">CudaImage::to_host()</text>
+  <text class="note" x="820" y="1173" text-anchor="middle">cudaMemcpy device → host, 4 MB</text>
+  <text class="note" x="820" y="1192" text-anchor="middle">the pipeline's only download</text>
+  <path class="edge" d="M680,1168 H636" marker-end="url(#ah)"/>
+  <text class="elbl" x="658" y="1160" text-anchor="middle">D2H</text>
+
+  <!-- ===== Present but unused ===== -->
+  <rect class="b-planned" x="40" y="1130" width="230" height="76" rx="10"/>
+  <text class="lbl" x="155" y="1154" text-anchor="middle">CacheNuke()</text>
+  <text class="note" x="155" y="1173" text-anchor="middle">cache-eviction helper</text>
+  <text class="note" x="155" y="1192" text-anchor="middle">no test calls it</text>
+
+  <!-- ===== Legend ===== -->
+  <text class="glbl" x="40" y="1244">LEGEND</text>
+  <rect class="b-orange" x="40" y="1258" width="26" height="14" rx="4"/>
+  <text class="note" x="78" y="1269">input file, STB I/O, PNG output</text>
+  <rect class="b-gray" x="270" y="1258" width="26" height="14" rx="4"/>
+  <text class="note" x="308" y="1269">Image — sequential oracle</text>
+  <rect class="b-blue" x="490" y="1258" width="26" height="14" rx="4"/>
+  <text class="note" x="528" y="1269">stages: same math in all engines</text>
+  <rect class="b-green" x="740" y="1258" width="26" height="14" rx="4"/>
+  <text class="note" x="778" y="1269">ParallelImage (OpenMP + AVX)</text>
+  <rect class="b-purple" x="40" y="1280" width="26" height="14" rx="4"/>
+  <text class="note" x="78" y="1291">CudaImage (GPU)</text>
+  <rect class="b-red" x="270" y="1280" width="26" height="14" rx="4"/>
+  <text class="note" x="308" y="1291">testbinary tests and checks</text>
+  <rect class="b-planned" x="490" y="1280" width="26" height="14" rx="4"/>
+  <text class="note" x="528" y="1291">dashed box = present but unused</text>
+  <path class="edge" d="M40,1309 H66" marker-end="url(#ah)"/>
+  <text class="note" x="78" y="1313">data flow, or a test → the engine it times</text>
+  <path class="edge-dash" d="M400,1309 H426" marker-end="url(#ah)"/>
+  <text class="note" x="438" y="1313">virtual dispatch</text>
+  <path class="wire" d="M600,1309 H626"/>
+  <circle class="dot" cx="613" cy="1309" r="3"/>
+  <text class="note" x="638" y="1313">stage tap (sequential run)</text>
+</svg>

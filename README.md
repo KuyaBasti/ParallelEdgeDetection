@@ -1,6 +1,8 @@
 # Parallel Edge Detection
 
-One edge-detection pipeline, three engines. A Canny-style image pipeline — grayscale conversion → 5×5 Gaussian blur → Sobel gradient → dual-threshold hysteresis — implemented as a **sequential C++ baseline**, an **OpenMP + AVX (Intel intrinsics) CPU engine**, and a **CUDA GPU engine**, all behind one virtual interface. The parallel engines are raced against the sequential reference for both **correctness** (the 8-bit outputs must match exactly) and **speed** (a microsecond timing harness built into the test suite).
+<p align="center"><img src="docs/system-overview.svg" alt="Parallel Edge Detection system overview. Lena_2048.png (2048×2048 RGB) is decoded by stbi_load into a host Image that feeds three engines behind one virtual interface: the sequential Image runs on it directly as the correctness oracle; ParallelImage takes a host copy and uses OpenMP parallel for with raw pointers, plus AVX at 8 floats per op in blur and gradient; CudaImage uploads 12 MB to the GPU, runs 1 thread per pixel in 32×32 blocks, and keeps the data on the GPU until to_host(). All three run the same five stages through virtual dispatch: convert RGB to float grayscale, 5×5 Gaussian blur, 3×3 Sobel X and Y gradient, hysteresis edges at 0.3 / 0.7, and convert back to 8-bit (4 MB). The GoogleTest testbinary races the ParallelImage modes 0–5 in microseconds plus a whole-pipeline speedup, checks each engine's 8-bit output byte-for-byte against the sequential reference with no tolerance (the CUDA result returns as a 4 MB device-to-host copy), and writes stage PNGs for a visual check." width="100%"></p>
+
+One edge-detection pipeline, three engines. A Canny-style image pipeline — grayscale conversion → 5×5 Gaussian blur → Sobel gradient → dual-threshold hysteresis — implemented as a **sequential C++ baseline**, an **OpenMP + AVX (Intel intrinsics) CPU engine**, and a **CUDA GPU engine**, all behind one virtual interface. Both parallel engines are checked against the sequential reference for **correctness** (the 8-bit outputs must match exactly) and timed for **speed** by a microsecond timing harness built into the test suite — the OpenMP + AVX engine raced against the sequential pipeline, the CUDA engine stage by stage.
 
 The interesting part isn't just that it's parallel — it's the built-in **mode system**: each pipeline stage has several numbered implementation variants (naive OpenMP, direct pointer access, single-loop, AVX-vectorized…), so the test binary doubles as a benchmarking lab that shows exactly which optimization bought what.
 
@@ -29,16 +31,7 @@ The interesting part isn't just that it's parallel — it's the built-in **mode 
 
 Every engine runs the same five stages. For the 2048×2048 test image, the data sizes at each step:
 
-```mermaid
-flowchart LR
-    PNG[("PNG file<br/>stbi_load")] --> RGB["RGB, 8-bit<br/>12 MB"]
-    RGB -- "convert<br/>mean(R,G,B) / 255" --> FG["float grayscale<br/>16 MB"]
-    FG -- "blur<br/>5×5 Gaussian" --> BL["float grayscale"]
-    BL -- "gradient<br/>3×3 Sobel ×2<br/>√(Gx² + Gy²)" --> GR["float grayscale"]
-    GR -- "edges(low, high)<br/>hysteresis threshold" --> ED["float, binary 0/1"]
-    ED -- "convert<br/>× 255" --> GS["grayscale, 8-bit<br/>4 MB"]
-    GS --> OUT[("PNG file<br/>stbi_write_png")]
-```
+<p align="center"><img src="docs/pipeline.svg" alt="Parallel Edge Detection pipeline. A top strip runs left to right, showing each step and what it produces. Load (stbi_load, from the 16-bit RGB test PNG) gives 8-bit RGB, 12 MB. Convert, the mean of R, G and B divided by 255, gives float grayscale, 16 MB. Blur, a 5×5 Gaussian with 25 taps, gives float grayscale, 16 MB. Gradient, two 3×3 Sobel kernels combined as √(Gx² + Gy²), gives float grayscale, 16 MB. Edges, hysteresis in one 3×3 pass, gives a float map of 0 or 1, 16 MB. Convert ×255 gives 8-bit grayscale, 4 MB. write_png (stbi_write_png) writes an 8-bit grayscale PNG file. Below the strip, each engine's default variant per stage. Image uses nested x/y loops through pixel()/fppixel() and is the exact-match reference. ParallelImage copies the loaded image in with a memcpy split across threads (copy constructor, mode 2), then runs convert mode 4, blur mode 4 and gradient mode 3 with AVX interiors and scalar borders, edges mode 2 with raw pointers and rows in parallel, and convert mode 4. CudaImage uploads 12 MB host-to-device, runs one kernel per stage in 32×32 blocks on an (x/32, y/32) grid with everything kept on the device, and copies the 4 MB result back with to_host()." width="100%"></p>
 
 Stage details (identical math in all three engines):
 
@@ -46,7 +39,7 @@ Stage details (identical math in all three engines):
 2. **Blur** — 5×5 Gaussian convolution (weights sum to ≈ 1.0) to suppress noise before differentiation. Borders use clamp-to-edge (the nearest valid pixel is replicated).
 3. **Gradient** — horizontal and vertical 3×3 Sobel convolutions, combined as the gradient magnitude `√(Gx² + Gy²)`. Same clamp-to-edge borders.
 4. **Edges** — dual-threshold hysteresis: a pixel becomes an edge (1.0) if its gradient exceeds `high`, or if it exceeds `low` *and* a pixel in its 3×3 neighborhood exceeds `high`. Everything else is 0. The tests use `low = 0.3`, `high = 0.7`.
-5. **Convert back** — the binary float map is scaled by 255 into an 8-bit grayscale PNG (edges white, background black).
+5. **Convert back** — the binary float map is scaled by 255 into an 8-bit grayscale image (edges white, background black), which `write_png()` can save as a PNG.
 
 Because every stage returns a `std::shared_ptr<Image>`, the whole pipeline chains in one expression and intermediates free themselves as references drop:
 
@@ -57,43 +50,12 @@ result->write_png("edges.png");
 
 ## Three Engines, One Interface
 
-```mermaid
-classDiagram
-    class Image {
-        <<sequential baseline>>
-        +convert(ImageType) shared_ptr~Image~
-        +blur() shared_ptr~Image~
-        +gradient() shared_ptr~Image~
-        +edges(low, high) shared_ptr~Image~
-        +shrink(factor) shared_ptr~Image~
-        +to_host() shared_ptr~Image~
-        +write_png(filename)
-        +pixel(x, y, ch) uchar&
-        +fppixel(x, y, ch) float&
-    }
-    class ParallelImage {
-        <<OpenMP + AVX intrinsics>>
-        +convert(to, mode)
-        +blur(mode)
-        +gradient(mode)
-        +edges(low, high, mode)
-    }
-    class CudaImage {
-        <<CUDA kernels, device-resident>>
-        +convert(to, mode)
-        +blur(mode)
-        +gradient(mode)
-        +edges(low, high, mode)
-        +to_host() shared_ptr~Image~
-    }
-    Image <|-- ParallelImage
-    Image <|-- CudaImage
-```
+<p align="center"><img src="docs/three-engines.svg" alt="Class diagram: Parallel Edge Detection, three engines, one interface. Image (image.hpp, image.cpp) is both the shared interface and the sequential engine. Its 8 virtual methods are convert, blur, gradient, edges and to_host (overridden by both subclasses) and shrink, write_png and clean (inherited unchanged); pixel, fppixel, validate, operator==, printdiff and ~Image are non-virtual. Its fields are protected except the public _data, and it derives from std::enable_shared_from_this. ParallelImage (OpenMP + AVX, host memory) and CudaImage (CUDA, device memory) inherit publicly from Image, and each overrides 5 of the 8 virtuals. A shared_ptr to Image cannot see the mode overloads, so each no-arg override picks the mode. ParallelImage uses convert 4, blur 4, gradient 3 and edges 2, and its to_host throws Need to implement; its overloads offer convert modes 0–5, blur 0–4 (4 = AVX), gradient 0–3 (3 = AVX) and edges 0–2. CudaImage always uses mode 0, which launches one of 5 kernels in 32×32 thread blocks, and its to_host is the only device-to-host copy. Warning rows note that other CudaImage modes, other conversions, and the inherited shrink, write_png, clean and pixel run host code on device memory." width="100%"></p>
 
 | Engine | Where | Parallelism | Memory |
 |---|---|---|---|
 | `Image` | [image.cpp](image.cpp) | none — plain nested loops, `pixel()`/`fppixel()` accessors | host `malloc` (or STB-owned for loaded files) |
-| `ParallelImage` | [parallel_image.hpp](parallel_image.hpp) | `#pragma omp parallel for` (over rows in the stencil stages) + 256-bit AVX intrinsics (8 floats/op) | host `malloc`, raw-pointer access in fast modes |
+| `ParallelImage` | [parallel_image.hpp](parallel_image.hpp) | `#pragma omp parallel for` (over rows in the stencil stages) + 256-bit AVX intrinsics in blur and gradient (8 floats/op) | host `malloc`, raw-pointer access in fast modes |
 | `CudaImage` | [cuda_image.cu](cuda_image.cu) | one CUDA thread per pixel, 32×32 blocks | `cudaMalloc` device memory; the *entire* pipeline stays on the GPU |
 
 The polymorphism is the point: the same chained-pipeline expression works on any engine, and the correctness tests exploit it by running identical pipelines through different subclasses and demanding identical bytes out.
@@ -115,6 +77,13 @@ ParallelEdgeDetection-main/
 ├── user_tests.cpp          # GoogleTest: full CUDA pipeline, per-stage timings, exact-match check
 ├── main.cpp                # Placeholder stub ("Hello world!") — the test binary is the real driver
 ├── stb_image.h / stb_image_write.h / stb_instantiation.cpp   # STB image I/O (PNG-only build)
+├── docs/                   # SVG diagrams used by this README and SYSTEM-DESIGN.md
+│   ├── system-overview.svg          # Overview: input, three engines, pipeline, test harness
+│   ├── pipeline.svg                 # The five stages, buffer sizes, default variant per engine
+│   ├── three-engines.svg            # Class diagram: Image interface, ParallelImage, CudaImage
+│   ├── stencil-and-avx.svg          # AVX interior pass + clamped border pass, inner loop
+│   ├── system-design-flowchart.svg  # End-to-end flowchart (SYSTEM-DESIGN.md)
+│   └── cuda-pipeline.svg            # CUDA sequence: one upload, five kernels, one download
 └── testfiles/
     ├── Lena_2048.png       # 2048×2048 RGB test image (ethically sourced recreation)
     └── shrunk.png          # Reference output for the shrink test
@@ -122,7 +91,7 @@ ParallelEdgeDetection-main/
 
 ## The Mode System — a Built-in Benchmarking Lab
 
-Each `ParallelImage` operation takes an optional `mode` argument selecting an implementation variant. The timing tests run the modes back-to-back on the same input and print the microsecond cost of each, so the effect of each optimization step is directly measurable. The no-argument virtual overrides dispatch to the variant that won:
+Each `ParallelImage` operation has a separate `mode` overload selecting an implementation variant (only the copy constructor takes a defaulted `mode = 2`); the overloads aren't on `Image`, so they're reachable only through a `ParallelImage` pointer. The timing tests run the modes back-to-back on the same input and print the microsecond cost of each, so the effect of each optimization step is directly measurable. The no-argument virtual overrides dispatch to a fixed default variant:
 
 | Operation | Modes | Default | The progression |
 |---|---|---|---|
@@ -132,11 +101,11 @@ Each `ParallelImage` operation takes an optional `mode` argument selecting an im
 | `gradient` | 0–3 | 3 | sequential → naive OpenMP → direct pointer access → **AVX interior + scalar borders** |
 | `edges` | 0–2 | 2 | sequential → naive OpenMP → **direct pointer access** (branchy hysteresis doesn't vectorize cleanly) |
 
-Two honest quirks of the races: `ParallelTest.TimeGradient` only races gradient modes 0–2 — the AVX gradient (mode 3, the default) is never individually timed, though its *correctness* is still verified because `TimeEdge` and `FullPerformance` run it via the default dispatch and compare against the sequential oracle. And two of the "steps" above (convert 2→3, blur 2→3) exist only in the code's comments — the implementations are byte-identical, so any timing difference between them is noise.
+Two honest quirks of the races: `ParallelTest.TimeGradient` only races gradient modes 0–2 — the AVX gradient (mode 3, the default) is never individually timed, though its *correctness* is still verified because `TimeEdge` and `FullPerformance` run it via the default dispatch and compare against the sequential oracle. Likewise, `TimeConvert` races only the RGB→float direction; the float→8-bit direction only ever runs its default mode 4. And two of the "steps" above (convert 2→3, blur 2→3) exist only in the code's comments — the implementations are byte-identical, so any timing difference between them is noise.
 
 Two lessons the mode races encode:
 
-- **Accessor overhead is real.** The jump from `fppixel(x, y)` calls (mode 1) to raw `srcdata[x + y * _x]` indexing (mode 2+) is one of the larger wins — the inline accessor does per-call channel math the optimizer doesn't always hoist.
+- **Accessor overhead is real.** The jump from `fppixel(x, y)` calls (mode 1) to raw `srcdata[x + y * _x]` indexing (mode 2+) is the step these races isolate — the inline accessor does per-call channel math the optimizer doesn't always hoist.
 - **Vectorize the interior, clamp the border.** The AVX modes process 8 pixels per instruction on the region where the stencil can't leave the image, then a second scalar pass (with a `continue` over the already-done interior) handles the clamped border ring. No branches inside the hot loop.
 
 ## Engine Deep Dives
@@ -151,23 +120,13 @@ Two lessons the mode races encode:
 
 ### 2. OpenMP + AVX (`ParallelImage`)
 
-All in [parallel_image.hpp](parallel_image.hpp). The stencil stages (blur, gradient, edges) parallelize row-wise — `#pragma omp parallel for` over `y` — so each thread owns a contiguous band of the image and writes are conflict-free. The convert variants experiment differently: modes 1–3 put the pragma on the *column* loop (each thread's writes stride across the row-major buffer), while mode 4 collapses to a single flat loop over pixel indices — likely part of why the flat loop wins.
+All in [parallel_image.hpp](parallel_image.hpp). The stencil stages (blur, gradient, edges) parallelize row-wise — `#pragma omp parallel for` over `y` — so each thread owns a contiguous band of the image and writes are conflict-free. The convert variants experiment differently: modes 1–3 put the pragma on the *column* loop (each thread's writes stride across the row-major buffer), while mode 4 (the default) collapses to a single flat loop over pixel indices, so each thread walks its share of the buffer in row-major order.
 
-The AVX modes (blur mode 4, gradient mode 3) split each row into two regions:
+The AVX modes (blur mode 4, gradient mode 3) split the image into two regions:
 
-```text
-┌────────────────────────────────────┐
-│ border ring — scalar pass, clamped │   runs second; `continue`-skips
-│  ┌──────────────────────────────┐  │   the interior it already has
-│  │ interior — AVX pass          │  │
-│  │ 2-px margin (blur) /         │  │   _mm256_loadu_ps: 8 neighbors at once
-│  │ 1-px margin (gradient)       │  │   × _mm256_set1_ps(weight), accumulate,
-│  │ stencil never leaves bounds  │  │   _mm256_sqrt_ps for gradient magnitude
-│  └──────────────────────────────┘  │
-└────────────────────────────────────┘
-```
+<p align="center"><img src="docs/stencil-and-avx.svg" alt="Parallel Edge Detection, AVX interior and clamped border, for blur mode 4 (5×5 Gaussian, 25 taps) and gradient mode 3 (3×3 Sobel ×2, 9 taps), drawn on a 22 × 10 image. Both run two OpenMP parallel for loops over rows. Pass 1 covers the interior, a margin of kernel radius r from every edge (2 for blur, 1 for gradient): 8-pixel AVX blocks, then a scalar remainder, with no bounds checks. Pass 2 visits every pixel, skips the 2-pixel interior with continue and computes the border ring with clamped coordinates, so for the gradient it recomputes the 1-pixel ring pass 1 already wrote. At 2048 wide a row gets 255 AVX blocks plus 4 scalar pixels (blur) or 6 (gradient). Inner loop, per tap: _mm256_loadu_ps loads 8 adjacent floats of row y + j, _mm256_set1_ps broadcasts the kernel weight, and _mm256_mul_ps plus _mm256_add_ps accumulate (no FMA); after the taps the gradient takes _mm256_sqrt_ps of xsum² + ysum², and _mm256_storeu_ps writes the 8 results." width="100%"></p>
 
-Inside the interior the stencil is guaranteed in-bounds, so the vector loop has **zero clamping branches**: for each of the 25 (blur) or 9 (gradient) taps, broadcast the kernel weight with `_mm256_set1_ps`, load 8 consecutive pixels with `_mm256_loadu_ps`, multiply-accumulate across all taps, and store 8 results at once. A scalar remainder loop finishes each row when the width isn't a multiple of 8.
+Inside the interior the stencil is guaranteed in-bounds, so the vector loop has **zero clamping branches**: for each of the 25 (blur) or 9 (gradient) taps, broadcast the kernel weight with `_mm256_set1_ps`, load 8 consecutive pixels with `_mm256_loadu_ps`, multiply-accumulate across all taps, and store 8 results at once. A scalar remainder loop finishes each row when the interior width isn't a multiple of 8.
 
 The copy constructor is its own experiment: mode 2 splits the buffer into one contiguous chunk per OpenMP thread and calls `memcpy` on each — betting that the library `memcpy` is already optimal and the win is purely in using all the memory channels.
 
@@ -191,7 +150,7 @@ auto reference = lena.convert(floatgrayscale)->blur()->gradient()->edges(.3f, .7
 EXPECT_TRUE(*reference == *parallel_result);
 ```
 
-This works without tolerance because every variant accumulates each pixel's taps in the same order, which keeps the CPU paths bit-identical; the CUDA path may differ in low-order float bits (nvcc contracts multiply-add chains to FMA by default, and the `-mavx`-only host build can't), but the 8-bit quantization absorbs those differences — and the quantized output is the only thing the tests actually compare. Two caveats: `operator==` compares only channel 0 of each pixel — exhaustive for the single-channel pipeline outputs, but the RGB copy-constructor race effectively verifies just the red channel. `printdiff()` exists for when comparisons fail: it prints the first disagreeing coordinates and values, which turns "the image looks wrong" into "row 0 is wrong", the fastest possible debugging signal for boundary bugs.
+This works without tolerance because every variant accumulates each pixel's taps in the same order, which keeps the CPU paths bit-identical; the CUDA path may differ in low-order float bits (nvcc contracts multiply-add chains to FMA by default, and the `-mavx`-only host build can't), but the CUDA test compares only the final edge map, which is already binary (0 or 1) before the ×255 — so the 0.3 / 0.7 thresholds absorb those differences unless a gradient lands within rounding error of a threshold. Two caveats: `operator==` compares only channel 0 of each pixel — exhaustive for the single-channel pipeline outputs, but the RGB copy-constructor race effectively verifies just the red channel. `printdiff()` exists for when comparisons fail: it prints the first disagreeing coordinates and values, which turns "the image looks wrong" into "row 0 is wrong", the fastest possible debugging signal for boundary bugs.
 
 The tests also write each stage's output (`Lena_blurred.png`, `Lena_gradient.png`, `Lena_edges.png`, …) into the build directory so results can be verified visually.
 
@@ -202,7 +161,7 @@ The tests also write each stage's output (`Lena_blurred.png`, `Lena_gradient.png
 - `GetTiming(lambda)` — runs the lambda and returns elapsed **microseconds** (`std::chrono`).
 - `CacheNukePrepare(size)` / `CacheNuke()` / `parallelNuke()` — fill a large vector with random floats and stream it through every core, evicting the image from cache so a timed run can't ride on the previous run's warm cache. Kept in a separate translation unit so the optimizer can't delete the traffic. (Available in the harness; the current tests run modes back-to-back without it, so treat cross-mode timings as warm-cache numbers.)
 
-The timing tests (`ParallelTest.Time*`) print per-mode microsecond costs; `ParallelTest.FullPerformance` times the entire sequential pipeline against the entire parallel pipeline and prints the speedup and thread count. `TestCudaImage.TestEach` prints per-stage GPU numbers — read them carefully: kernel launches are asynchronous, but each timed stage *also* allocates and zeroes its output buffer and destroys its input image, and that destructor's `cudaFree` implicitly synchronizes with the kernel that's still reading the buffer. So per-stage numbers mix kernel execution with memory-management overhead; the unambiguous figure is the pipeline total, ending at `to_host()`'s blocking `cudaMemcpy`.
+The timing tests (`ParallelTest.Time*`) print per-mode microsecond costs; `ParallelTest.FullPerformance` times the entire sequential pipeline against the entire parallel pipeline and prints the speedup (an integer-truncated `t0 / t1`) and thread count. `TestCudaImage.TestEach` prints per-stage GPU numbers — read them carefully: kernel launches are asynchronous, but each timed stage *also* allocates and zeroes its output buffer and destroys its input image, and that destructor's `cudaFree` implicitly synchronizes with the kernel that's still reading the buffer. So per-stage numbers mix kernel execution with memory-management overhead; the unambiguous figure is the pipeline total, ending at `to_host()`'s blocking `cudaMemcpy`.
 
 ## Building
 
@@ -247,7 +206,7 @@ Or `make test` / `ctest` for the full discovered suite. Timing output goes to st
 Honest notes — most of these are scope decisions, but they bite if you reuse the code blindly:
 
 - **Image dimensions should be multiples of 32 for CUDA.** The grid is computed as `(x/32, y/32)` with integer division — a 2000×2000 image would leave the rightmost/bottom remainder pixels unprocessed (they come out black from the zero-initialized output buffer). The kernels already carry per-thread bounds guards, so ceil-division in the grid computation is the only missing piece. The 2048×2048 test image divides evenly.
-- **`CudaImage` fallback paths are traps.** Unsupported conversions (anything other than `rgb→floatgrayscale` and `floatgrayscale→grayscale`) and non-zero modes fall through to the base-class CPU implementation, which would dereference a *device* pointer on the host. Stay on the supported path.
+- **`CudaImage` fallback paths are traps.** Unsupported conversions (anything other than `rgb→floatgrayscale` and `floatgrayscale→grayscale`) and non-zero modes fall through to the base-class CPU implementation, which would dereference a *device* pointer on the host. Stay on the supported path. The same applies to the inherited `shrink()`, `write_png()`, `clean()` and `pixel()`/`fppixel()` — call `to_host()` first.
 - **`ParallelImage` modes are unvalidated.** An out-of-range mode returns an allocated but never-written image (silent garbage) for `blur`/`gradient`/`edges` and the copy constructor; `convert` silently falls back to the sequential path instead.
 - **`ParallelImage::to_host()` throws** (`"Need to implement"`) — it overrides the base-class no-op, so a generic chain ending in `->to_host()` works on `Image` and `CudaImage` but not on the OpenMP engine.
 - **This is not full Canny.** There is no non-maximum suppression, so edges are several pixels thick; and hysteresis is a single 3×3-neighborhood pass, not iterative edge tracking, so a weak-edge chain more than one pixel from a strong pixel is dropped.
